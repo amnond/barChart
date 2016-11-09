@@ -4,12 +4,38 @@
 
 	var pluginName = "barChart";
 
+	function defaultTooltipFormat(value, custom) {
+		return value; //value + ' custom:' + JSON.stringify(custom);
+	}
+
+	function defaultSortValues(a, b) {
+		return b.value - a.value;
+	}
+
+	function defaultFormatDate(date) {
+		var dd = date.getDate();
+		var mm = date.getMonth() + 1;
+		var yyyy = date.getFullYear().toString().substring(2);
+
+		var theDate = [ dd, mm, yyyy ].join('.');
+		return theDate;
+	}
+
+
 	function Plugin( element, options ) {
 
 		var defaults = {
 			bars : [],
 			hiddenBars : [],
-			vertical : false,
+			vertical : true,
+			showBarSum: true,
+			gridYFormat: true,
+			autoVertical: true,
+			legend_checkboxes : false,
+			sortValues: defaultSortValues,
+			formatTooltip: defaultTooltipFormat,
+			formatDate: defaultFormatDate,
+			legendContainer : null,
 			colors : [
 				"#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5",
 				"#2196f3", "#03a9f4", "#00bcd4", "#009688", "#4caf50",
@@ -20,24 +46,71 @@
 			stepsCount : 5,
 			defaultWidth : 40,
 			totalSumHeight : 25,
-			defaultColumnWidth : 65
+			defaultColumnWidth : 65,
 		};
 
+		var el = $.extend( true, element, {} );
+
 		this.element = element;
-
 		this.options = $.extend( {}, defaults, options );
-
 		this._defaults = defaults;
-
 		this._name = pluginName;
 
 		this.init();
+
+		options.vertical_needed = this.vertical_needed;
+
+		if (this.vertical_needed() && this.options.autoVertical) {
+			// TODO: Not the cleanest implementation... we can do this because
+			//       this.element has been wrapped with the bar-chart-wrapper div
+			//       int the init() method above.
+			$(this.element).children().remove();  // remove the chart objects (bars etc.)
+			$(this.element).siblings().remove();  // remove the legend (if an internal container)
+			$(this.element).unwrap(); // remove the bar-chart-wrapper div
+
+        	this.options.vertical = true;
+        	this.init(); // this will wrap again with bar-chart-wrapper
+        }
+
+        var self = this;
+
+	    $(window).resize(function() {
+	    });
+
 	}
 
 	Plugin.prototype = {
+		vertical_needed: function() {
+	        // Hack to check if the text on the x-axis (dates) has text-overflow ellipsis
+	        // check comments here, as apparently does not work in every browser
+	        // http://stackoverflow.com/questions/7738117/html-text-overflow-ellipsis-detection
+	        var vneeded = false;
+	        $('.bar-title').each(function(e,obj) {
+	            if (obj.offsetWidth < obj.scrollWidth) {
+	                vneeded = true;
+	            }
+	        });
+
+	        return vneeded;
+		},
+
+		render : function() {
+			this.init();
+
+			if (this.vertical_needed() && this.options.autoVertical) {
+				// TODO: Not the cleanest implementation... we can do this because
+				//       this.element has been wrapped with the bar-chart-wrapper div
+				//       int the init() method above.
+				$(this.element).children().remove();  // remove the chart objects (bars etc.)
+				$(this.element).siblings().remove();  // remove the legend (if an internal container)
+				$(this.element).unwrap(); // remove the bar-chart-wrapper div
+
+	        	this.options.vertical = true;
+	        	this.init(); // this will wrap again with bar-chart-wrapper
+	        }
+		},
 
 		init: function() {
-
 
 			$(this.element)
 				.css( 'height', this.options.height && !this.options.vertical ? this.options.height : 'auto' )
@@ -61,57 +134,54 @@
 
 			this.options.bars = this.colorizeBars(this.options.bars, this.options.colors);
 
-			this.options.columns = this.groupByKey(this.options.bars, this.options.hiddenBars);
+			this.options.columns = this.groupByKey(this.options.bars, this.options.hiddenBars, this.options.custom);
 
 
 			this.drawY(this.element, this.options);
-
 			this.drawX(this.element, this.options);
 
-			this.drawToolTip(this.element, this.options);
+			var container = this.element;
+			var container_id = this.options.legendContainer;
+			if (container_id != null) {
+				container = document.getElementById(container_id);
+			}
 
-			this.drawLegend(this.element, this.options);
-
-			this.subscribe(this.element, this.options);
-
+			this.drawLegend(container, this.options);
 
 			return this;
 		},
 
 		update : function(el, options) {
 
-
 			$(el).find('.bar, .bar-y, .bar-x').remove();
 
-
-			options.columns = this.groupByKey(options.bars, options.hiddenBars);
-
-
+			options.columns = this.groupByKey(options.bars, options.hiddenBars, options.custom);
 			this.drawY(el, options);
-
 			this.drawX(el, options);
-
-			this.drawToolTip(el, options);
-
 
 			return this;
 		},
 
-		groupByKey : function(bars, hiddenBars){
+		groupByKey : function(bars, hiddenBars, custom){
 
 			hiddenBars = hiddenBars || [];
 
 			var columns = {};
 
-			bars.forEach(function(bar){
+			bars.forEach(function(bar, i){
 
 				if (hiddenBars.indexOf(bar.name) !== -1) {
 					return true;
 				}
 
-				bar.values.forEach(function(value){
+				bar.values.forEach(function(value, i){
+					var elem = { value : parseFloat(value[1]), name : bar.name, color : bar.color }
+					if ('custom' in bar && i<bar.custom.length) {
+						var custom = bar.custom[i];
+						elem.custom = custom;
+					}
 					columns[ value[0] ] = columns[ value[0] ] || [];
-					columns[ value[0] ].push({ value : parseFloat(value[1]), name : bar.name, color : bar.color });
+					columns[ value[0] ].push(elem);
 				});
 
 			});
@@ -184,15 +254,6 @@
 			return result;
 		},
 
-		formatDate : function(date){
-
-			var dd = date.getDate();
-			var mm = date.getMonth() + 1;
-			var yyyy = date.getFullYear().toString().substring(2);
-
-			return [ dd, mm, yyyy ].join('.');
-		},
-
 		drawY: function(el, options) {
 
 			var container = document.createElement('div');
@@ -225,22 +286,25 @@
 
 				var gridValue = value;
 
-				if (gridValue < 1000) {
-					gridValue = gridValue.toFixed(2);
-				}
+				if (options.gridYFormat) {
+					if (gridValue < 1000) {
+						gridValue = gridValue.toFixed(2);
+					}
 
-				if (gridValue >= 1000 && gridValue <= 1000000) {
-					gridValue = (gridValue / 1000).toFixed(2) + ' K';
-				}
+					if (gridValue >= 1000 && gridValue <= 1000000) {
+						gridValue = (gridValue / 1000).toFixed(2) + ' K';
+					}
 
-				if (gridValue >= 1000000 && gridValue <= 1000000000) {
-					gridValue = (gridValue / 1000000).toFixed(2) + ' M';
+					if (gridValue >= 1000000 && gridValue <= 1000000000) {
+						gridValue = (gridValue / 1000000).toFixed(2) + ' M';
+					}
 				}
 
 				var y = document.createElement('div');
 
 				y.classList.add( yClassName );
 				y.style[ yPropertyName ] = top + 'px';
+				gridValue = '';
 				y.innerHTML = '<div>' + gridValue + '</div>';
 
 				container.appendChild( y );
@@ -295,9 +359,12 @@
 					var localMaxHeight = 0;
 
 					//sort values desc
-					column.sort(function (a, b) { return b.value - a.value; });
 
-					column.forEach(function(bar){
+					// Use the sort function to arange the order in which the stacked bars for the same column
+					// (or line in vertical mode) will appear. The default is order by value associated with the bar
+					column.sort( options.sortValues );
+
+					column.forEach(function(bar) {
 						localMax = bar.value > localMax ? bar.value : localMax;
 						localSum += bar.value;
 					});
@@ -308,7 +375,7 @@
 
 					//it's timestamp, so let's format it
 					if (text.length === 10 && text == parseInt(text)) {
-						text = this.formatDate(new Date(text * 1000));
+						text = this.options.formatDate(new Date(text * 1000));
 					}
 
 					var bar = document.createElement('div');
@@ -317,7 +384,8 @@
 
 
 					barTitle.classList.add('bar-title');
-					barTitle.textContent = text;
+					//barTitle.textContent = text;
+					barTitle.innerHTML = text;
 
 					barValue.classList.add('bar-value');
 					barValue.style[ options.vertical ? 'width' : 'height' ] = localMaxHeight;
@@ -336,7 +404,6 @@
 					bar.appendChild(barTitle);
 					bar.appendChild(barValue);
 
-
 					var bottom = 0;
 					var previousBottom = 0;
 					var previousHeight = 0;
@@ -353,14 +420,27 @@
 						var barLine = document.createElement('div');
 
 						barLine.classList.add('bar-line');
+						//barLine.classList.add('tooltip');
 
-						barLine.setAttribute('data-percentage', percentage + '%');
-						barLine.setAttribute('data-name', bar.name);
-						barLine.setAttribute('data-value', bar.value);
+						var custom_info = ('custom' in bar) ? bar.custom : {};
 
 						barLine.style.backgroundColor = bar.color;
 						barLine.style[ options.vertical ? 'width' : 'height' ] = height + 'px';
 						barLine.style[ options.vertical ? 'left' : 'bottom' ] = bottom + 'px';
+
+					    barLine.style['white-space'] = 'nowrap';
+					    barLine.style['overflow'] = 'hidden';
+					    barLine.style['text-overflow'] = 'ellipsis';
+					    barLine.style['text-align'] = 'center';
+					    // 24px is taken from jquery-barchart.css (.bar-chart-vertical .bar /  height)
+					    barLine.style['line-height'] = options.vertical ? "24px" : barLine.style['height'];
+
+						var html = options.formatTooltip(bar.value, custom_info);
+						var inner = "<span style='padding:2px; border-radius:5px; background-color:rgba(255, 255, 255, 0.5); color:black'>"+html+"</span>";
+						//inner += "<span class='tooltiptext'>"+html+"</span>";
+						barLine.innerHTML = inner;
+					    $(barLine).attr("title", html);
+						$(barLine).attr("display_id", bar.name);
 
 						partial.appendChild(barLine);
 
@@ -379,8 +459,9 @@
 
 					barSum.textContent = Number( localSum.toFixed(4)).toString(); // trim trailing zeros
 
-
-					bar.appendChild(barSum);
+					if (options.showBarSum == true) {
+						bar.appendChild(barSum);
+					}
 
 				}
 
@@ -394,243 +475,46 @@
 			return this;
 		},
 
-		drawToolTip : function(el) {
-
-			var tooltipExist = $(el).find('.tooltip').length > 0;
-
-			if (!tooltipExist) {
-
-				var tooltipTitle = document.createElement('div');
-
-				tooltipTitle.classList.add('tooltip-title');
-
-
-				var tooltipValue = document.createElement('div');
-
-				tooltipValue.classList.add('tooltip-change');
-
-
-				var tooltip = document.createElement('div');
-
-				tooltip.classList.add('tooltip');
-				tooltip.classList.add('tooltip-mobile');
-				tooltip.classList.add('hidden');
-
-				tooltip.style.top = 0;
-				tooltip.style.left = 0;
-
-				tooltip.appendChild( tooltipTitle );
-				tooltip.appendChild( tooltipValue );
-
-				el.appendChild(tooltip);
-
+		legendClickFunc : function(self) {
+			return function(obj) {
+				self.options.hiddenBars = [];
+				$('.legend_cb').each(function(e,obj) {
+					var checked = $(obj).prop('checked');
+					if (!checked) {
+						var name = obj.attributes['dispname'].nodeValue;
+						self.options.hiddenBars.push(name);
+					}
+				});
+				self.update(self.element, self.options);
 			}
-
-			return this;
 		},
 
 		drawLegend : function(el, options) {
-
 			var bars = options.bars;
-
-			var legend = document.createElement('div');
-
-			legend.classList.add('legend');
-			legend.classList.add('bar-legend');
-
-
-			bars.forEach(function(bar){
-
-				var checkbox = document.createElement('div');
-
-				checkbox.classList.add( 'checkbox' );
-				checkbox.classList.add( options.hiddenBars.indexOf(bar.name) === -1 ? 'checked' : '' );
-				checkbox.style.backgroundColor = bar.color;
-
-
-				var legendItem = document.createElement('div');
-
-				legendItem.classList.add( 'legend-item' );
-				legendItem.style.color = bar.color;
-				legendItem.textContent = bar.name;
-
-
-				var legendItemWrapper = document.createElement('div');
-
-				legendItemWrapper.classList.add( 'legend-item-wrapper' );
-				legendItemWrapper.appendChild( checkbox );
-				legendItemWrapper.appendChild( legendItem );
-
-
-				legend.appendChild( legendItemWrapper );
-
-			});
-
-			el.parentNode.appendChild( legend );
-
-			return this;
-		},
-
-		subscribe : function(el, options) {
-
-
-			var self = this;
-
-
-			var clicks = 0;
-
-			var timer = null;
-
-			var delay = 200;
-
-
-			var $el = $(el);
-
-			var $tooltip = $el.find('.tooltip');
-
-			var $barLines = $el.find('.bar-line');
-
-			var $legendItemWrapper = $el.parent().find('.legend-item-wrapper');
-
-
-			$barLines.on('mousemove', function(e){
-
-				var $currentTarget = $(e.currentTarget);
-
-				$currentTarget.parents('.bar').addClass('bar-active');
-
-				$tooltip.css({
-					top: e.clientY - 65,		// + $(this).offset().top
-					left: e.clientX - 65		// + $(this).offset().left
-				});
-
-				$tooltip
-					.find('.tooltip-title')
-					.html( $currentTarget.data('name') );
-
-				$tooltip
-					.find('.tooltip-change')
-					.html( $currentTarget.data('value') + '<small>' + $currentTarget.data('percentage') + '</small>' );
-
-				$tooltip.removeClass('hidden');
-			});
-
-			$barLines.on('mouseleave', function(e){
-
-				$tooltip.addClass('hidden');
-
-				$(e.currentTarget).parents('.bar').removeClass('bar-active');
-			});
-
-
-			$legendItemWrapper.on('mouseleave', function(e){
-
-				var barName = $(e.currentTarget).find('.legend-item').html();
-
-				var $bar = $el.find('.bar-line[data-name="' + barName + '"]');
-
-				$bar.removeClass('active');
-			});
-
-
-			$legendItemWrapper.on('mouseenter', function(e){
-
-				var barName = $(e.currentTarget).find('.legend-item').html();
-
-				var $bar = $el.find('.bar-line[data-name="' + barName + '"]');
-
-				$bar.addClass('active');
-			});
-
-
-			$legendItemWrapper.on('click', function(e){
-
-				e.preventDefault();
-
-				var $currentTarget = $(e.currentTarget);
-
-				clicks++;
-
-				if (clicks === 1) {
-
-					timer = setTimeout(function(){
-
-						clearTimeout(timer);
-
-						var name = $currentTarget.find('.legend-item').html();
-
-						var isChecked = $currentTarget.find('.checkbox').hasClass('checked');
-
-						$currentTarget.find('.checkbox').toggleClass('checked');
-
-						if (isChecked) {
-
-							options.hiddenBars.push(name);
-
-						} else {
-
-							var index = options.hiddenBars.indexOf(name);
-
-							if (index >= 0) {
-
-								options.hiddenBars.splice(index, 1);
-
-							}
-
-						}
-
-						self.update(el, options);
-
-						clicks = 0;
-
-					}, delay);
-
-				} else {
-
-					clearTimeout(timer);
-
-					var $checkbox = $currentTarget.find('.checkbox');
-
-					var $checkboxes = $currentTarget.parent().find('.checkbox.checked');
-
-					var checkedCount = $checkboxes.length;
-
-					if (checkedCount === 1 && $checkbox.hasClass('checked')) {
-
-						$currentTarget.parent().find('.checkbox').addClass('checked');
-
-					} else {
-
-						$currentTarget.parent().find('.checkbox').removeClass('checked');
-
-						$checkbox.addClass('checked');
-
-					}
-
-					var checkboxes = [];
-
-					$currentTarget.parent().find('.checkbox:not(.checked)').each(function(){
-
-						checkboxes.push( $(this).next('.legend-item').html() );
-
-					});
-
-					options.hiddenBars = checkboxes;
-
-					self.update(el, options);
-
-
-					clicks = 0;
-
+			var hiddenBars = options.hiddenBars;
+			var html = '';
+			bars.forEach(function(bar) {
+				html += "<div style='background-color:"+bar.color+"; padding:3px;' class='legend-colrect'>";
+				if (options.legend_checkboxes) {
+					var checked = (hiddenBars.indexOf(bar.name) == -1) ? 'checked' : '';
+					html += "<input type='checkbox' class='legend_cb' dispname='"+bar.name+"' "+checked+" />";
 				}
+				html += "</div>";
+				html += "<div class='legend-text'>"+bar.name+"</div>";
 			});
 
+			if (options.legendContainer != null) {
+				document.getElementById(options.legendContainer).innerHTML = html;
+			}
+			else {
+				var legend = document.createElement('div');
+				legend.innerHTML = html;
+				el.parentNode.appendChild( legend );
+			}
 
-			$legendItemWrapper.on('dblclick', function(e){
-
-				e.preventDefault();
-			});
-
+			if (options.legend_checkboxes) {
+				$('.legend_cb').on('click', this.legendClickFunc(this));
+			}
 
 			return this;
 		}
