@@ -504,11 +504,14 @@
 			});
 
 			if (options.legendContainer != null) {
-				document.getElementById(options.legendContainer).innerHTML = html;
+				var legend = $(document.getElementById(options.legendContainer));
+				legend.addClass('bar-chart-legend')
+				legend.html(html);
 			}
 			else {
 				var legend = document.createElement('div');
 				legend.innerHTML = html;
+				$(legend).addClass('bar-chart-legend')
 				el.parentNode.appendChild( legend );
 			}
 
