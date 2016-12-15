@@ -411,42 +411,42 @@
 					var partial = document.createDocumentFragment();
 
 					column.forEach(function (bar) {
+						if (bar.value) {
+							var height = localMaxHeight / localMax * bar.value;
+							var percentage = (bar.value / (total / 100)).toFixed(2);
 
-						var height = localMaxHeight / localMax * bar.value;
-						var percentage = (bar.value / (total / 100)).toFixed(2);
+							bottom = previousHeight + previousBottom;
 
-						bottom = previousHeight + previousBottom;
+							var barLine = document.createElement('div');
 
-						var barLine = document.createElement('div');
+							barLine.classList.add('bar-line');
+							//barLine.classList.add('tooltip');
 
-						barLine.classList.add('bar-line');
-						//barLine.classList.add('tooltip');
+							var custom_info = ('custom' in bar) ? bar.custom : {};
 
-						var custom_info = ('custom' in bar) ? bar.custom : {};
+							barLine.style.backgroundColor = bar.color;
+							barLine.style[ options.vertical ? 'width' : 'height' ] = height + 'px';
+							barLine.style[ options.vertical ? 'left' : 'bottom' ] = bottom + 'px';
 
-						barLine.style.backgroundColor = bar.color;
-						barLine.style[ options.vertical ? 'width' : 'height' ] = height + 'px';
-						barLine.style[ options.vertical ? 'left' : 'bottom' ] = bottom + 'px';
+						    barLine.style['white-space'] = 'nowrap';
+						    barLine.style['overflow'] = 'hidden';
+						    barLine.style['text-overflow'] = 'ellipsis';
+						    barLine.style['text-align'] = 'center';
+						    // 24px is taken from jquery-barchart.css (.bar-chart-vertical .bar /  height)
+						    barLine.style['line-height'] = options.vertical ? "24px" : barLine.style['height'];
 
-					    barLine.style['white-space'] = 'nowrap';
-					    barLine.style['overflow'] = 'hidden';
-					    barLine.style['text-overflow'] = 'ellipsis';
-					    barLine.style['text-align'] = 'center';
-					    // 24px is taken from jquery-barchart.css (.bar-chart-vertical .bar /  height)
-					    barLine.style['line-height'] = options.vertical ? "24px" : barLine.style['height'];
+							var html = options.formatTooltip(bar.value, custom_info);
+							var inner = "<span style='padding:2px; border-radius:5px; background-color:rgba(255, 255, 255, 0.5); color:black'>"+html+"</span>";
+							//inner += "<span class='tooltiptext'>"+html+"</span>";
+							barLine.innerHTML = inner;
+						    $(barLine).attr("title", html);
+							$(barLine).attr("display_id", bar.name);
 
-						var html = options.formatTooltip(bar.value, custom_info);
-						var inner = "<span style='padding:2px; border-radius:5px; background-color:rgba(255, 255, 255, 0.5); color:black'>"+html+"</span>";
-						//inner += "<span class='tooltiptext'>"+html+"</span>";
-						barLine.innerHTML = inner;
-					    $(barLine).attr("title", html);
-						$(barLine).attr("display_id", bar.name);
+							partial.appendChild(barLine);
 
-						partial.appendChild(barLine);
-
-						previousBottom = bottom;
-						previousHeight = height;
-
+							previousBottom = bottom;
+							previousHeight = height;
+						}
 					});
 
 					barValue.appendChild( partial );
